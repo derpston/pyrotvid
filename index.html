@@ -1,0 +1,83 @@
+<html>
+<head>
+<script type="text/javascript" src="https://www.google.com/jsapi"></script>
+<script type="text/javascript">google.load("jquery", 1);</script>
+<script type="text/javascript">
+
+var videos = null;
+var start = Math.pow(2, 32);
+var end = 0;
+
+$(document).ready(function(){
+    $("#timeline").mousemove(function(event){
+        var width = $(this).width();
+        var pos = event.offsetX / width;
+        var timestamp = start + ((end - start) * pos);
+        d = new Date();
+        d.setTime(timestamp * 1000);
+        $("#cursor").html("" + d);
+        $("#cursor").css('left', event.pageX - ($("#cursor").width() / 2));
+
+        if($('img#frame').attr('src') != '/video/0/' + timestamp)
+            $('img#frame').attr('src', '/video/0/' + timestamp);
+    });
+
+
+    $.getJSON("/video/", {}, function(data){
+        videos = data;
+        for(var index in data)
+        {
+            start = Math.min(start, data[index]['start'])
+            end = Math.max(start, data[index]['end'])
+        }
+        d = new Date();
+        d.setTime(start * 1000);
+        console.debug(d);
+        d = new Date();
+        d.setTime(end * 1000);
+        console.debug(d);
+     });
+    
+});
+
+</script>
+<style type="text/css">
+
+img#frame
+{
+    border: 1px solid black;
+    padding: 1px;
+    margin: 10px auto 10px auto;
+}
+
+div#timeline
+{
+    width: 90%;
+    height: 20px;
+    border: 1px solid black;
+    background: #cccccc;
+    margin: 10px auto 40px auto;
+}
+
+span#cursor
+{
+    height: 20px;
+    position: absolute;
+    top: 50px;
+    font-family: sans;
+    font-size: 12px;
+    display: inline-block;
+}
+
+</style>
+</head>
+<body>
+
+<div id="timeline"></div>
+<span id="cursor"></span>
+
+<img id="frame" />
+
+
+</body>
+</html>
