@@ -9,33 +9,52 @@ var start = Math.pow(2, 32);
 var end = 0;
 
 $(document).ready(function(){
-    $("#timeline").mousemove(function(event){
+    //$(".video").mousemove(function(event){
+    $(".video").live("mousemove", function(event){
+        var videoid = $(this).attr("data-video");
+
+        // Calculate the X offset of the cursor within this video, as a float between 0 and 1.
         var width = $(this).width();
         var pos = event.offsetX / width;
+
+        // Calculate the approximate timestamp in the video that corresponds to the position of the mouse cursor.
+        var start = videos[videoid]['start'];
+        var end = videos[videoid]['end'];
         var timestamp = start + ((end - start) * pos);
+
+        // Display this timestamp.
         d = new Date();
         d.setTime(timestamp * 1000);
         $("#cursor").html("" + d);
         $("#cursor").css('left', event.pageX - ($("#cursor").width() / 2));
 
-        if($('img#frame').attr('src') != '/video/0/' + timestamp)
-            $('img#frame').attr('src', '/video/0/' + timestamp);
+        // Load a new frame from the video.
+        if($('img#frame').attr('src') != '/video/' + videoid + '/' + timestamp)
+            $('img#frame').attr('src', '/video/' + videoid + '/' + timestamp);
     });
 
 
     $.getJSON("/video/", {}, function(data){
         videos = data;
+
+        // Calculate total size.
+        var size = 0;
+        for(var index in data)
+            size += data[index]['size'];
+
         for(var index in data)
         {
-            start = Math.min(start, data[index]['start'])
-            end = Math.max(start, data[index]['end'])
+            // Make a video object in the timeline.
+            var videospan = $('<span>');
+
+            videospan.attr('data-video', index);
+
+            videospan.addClass('video');
+            videospan.css('width', ((data[index]['size'] / size) * 100) + "%");
+            videospan.text("video");
+            $("#timeline").append(videospan);
+
         }
-        d = new Date();
-        d.setTime(start * 1000);
-        console.debug(d);
-        d = new Date();
-        d.setTime(end * 1000);
-        console.debug(d);
      });
     
 });
@@ -67,6 +86,13 @@ span#cursor
     font-family: sans;
     font-size: 12px;
     display: inline-block;
+}
+
+span.video
+{
+   display: table-cell;
+   background: #00CC00;
+   border: 1px solid blue;
 }
 
 </style>
