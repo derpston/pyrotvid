@@ -8,31 +8,65 @@ var videos = null;
 var start = Math.pow(2, 32);
 var end = 0;
 
+function getVideoInfo(obj)
+{
+   // Assumes 'this' is a video span object.
+   var videoid = parseInt($(obj).attr("data-video"));
+
+   // Calculate the X offset of the cursor within this video, as a float between 0 and 1.
+   var width = $(obj).width();
+   var pos = event.offsetX / width;
+
+   // Calculate the approximate timestamp in the video that corresponds to the position of the mouse cursor.
+   // The display timestamp is what is displayed, but the absolute one is the one to use for lookups because it actually appears in the underlying data.
+   var start = parseFloat($(obj).attr("data-drag-start"));
+   var end = parseFloat($(obj).attr("data-drag-end"));
+
+   if(start == undefined || isNaN(start))
+      start = videos[videoid]['start'];
+
+   if(end == undefined || isNaN(end))
+      end = videos[videoid]['end'];
+
+   var displaytimestamp = ((end - start) * pos);
+   var absolutetimestamp = start + displaytimestamp
+
+   return {'id': videoid, 'display': displaytimestamp, 'absolute': absolutetimestamp, 'mouseX': event.pageX}
+}
+
+
 $(document).ready(function(){
-    //$(".video").mousemove(function(event){
-    $(".video").live("mousemove", function(event){
-        var videoid = $(this).attr("data-video");
+   //$(".video").mousemove(function(event){
+   $(".video").live("mousemove", function(event){
+      var videoinfo = getVideoInfo(this)
 
-        // Calculate the X offset of the cursor within this video, as a float between 0 and 1.
-        var width = $(this).width();
-        var pos = event.offsetX / width;
+      // Don't attempt to look up and display a frame if the mouse is
+      // over a cell boundary.
+      if(videoinfo['display'] < 0)
+         return;
 
-        // Calculate the approximate timestamp in the video that corresponds to the position of the mouse cursor.
-        var start = videos[videoid]['start'];
-        var end = videos[videoid]['end'];
-        var timestamp = start + ((end - start) * pos);
+      // Display this timestamp.
+      var date = new Date(null);
+      date.setSeconds(videoinfo['display']);
+      var time = date.toTimeString().substr(0, 8);
+      $("#cursor").html(time);
 
-        // Display this timestamp.
-        d = new Date();
-        d.setTime(timestamp * 1000);
-        $("#cursor").html("" + d);
-        $("#cursor").css('left', event.pageX - ($("#cursor").width() / 2));
+      $("#cursor").css('left', event.pageX - ($("#cursor").width() / 2));
 
-        // Load a new frame from the video.
-        if($('img#frame').attr('src') != '/video/' + videoid + '/' + timestamp)
-            $('img#frame').attr('src', '/video/' + videoid + '/' + timestamp);
+      // Perform a search for the closest frame to this timestamp.
+      $.ajax({
+             url: '/video/' + videoinfo['id'] + '/' + videoinfo['absolute']
+          ,  type: "HEAD"
+          ,  success: function(data, textstatus, jqxhr) {
+                var url = jqxhr.getResponseHeader("Location");
+
+                //Load a new frame from the video.
+                if($('img#frame').attr('src') != url)
+                    $('img#frame').attr('src', url);
+             }
+          });
+
     });
-
 
     $.getJSON("/video/", {}, function(data){
         videos = data;
@@ -51,13 +85,188 @@ $(document).ready(function(){
 
             videospan.addClass('video');
             videospan.css('width', ((data[index]['size'] / size) * 100) + "%");
-            videospan.text("video");
-            $("#timeline").append(videospan);
+
+            // Make a pretty label for this video.
+            var seconds = data[index]['end'] - data[index]['start'];
+            var hours = Math.floor(seconds / 60 / 60);
+            var minutes = Math.floor(seconds / 60);
+            seconds = Math.floor(seconds % 60);
+            length = seconds + "s"
+            if(minutes > 0)
+               length = minutes + "m " + length
+            if(hours > 0)
+               length = hours + "h " + length
+
+            videospan.text(length);
+            $("#maintimeline").append(videospan);
 
         }
      });
-    
+
+   $("img#frame").bind("load", function(){
+      setTimeout(function() {
+         //console.log($("img"))
+      }, 100);
+   });
+
+   var drag_start = null;
+
+   $("#maintimeline .video").live("mousedown", function(event){
+      drag_start = getVideoInfo(this)
+      event.preventDefault();
+   });
+   
+   // Draw a little "selected" region marker above the main timeline while
+   // the user is dragging.
+   $("#maintimeline .video").live("mousemove", function(event){
+
+      if(drag_start != null)
+      {
+         clearLines("highlightsection");
+         y = $(this).position().top + $(this).height() + 19;
+         drawLine(drag_start['mouseX'], y, event.pageX, y, "highlightsection")
+      }
+   });
+   
+   $("#maintimeline .video").live("mouseup", function(event){
+      if(drag_start != null)
+      {
+         var drag_end = getVideoInfo(this);
+
+         // A complete drag is displayed on the subtimeline.
+
+         // Clear the subtimeline.
+         $("#subtimeline").children().remove();
+
+         // Swap the order of the start and end drag points if the user was dragging right-to-left.
+         if(drag_end['mouseX'] < drag_start['mouseX'])
+
+         var total_seconds = 0;
+         for(var index = drag_start['id']; index <= drag_end['id']; index++)
+         {
+            // Store the drag start and end timestamps on the video.
+            if(index == drag_start['id'])
+               start = drag_start['absolute'];
+            else
+               start = videos[index]['start'];
+
+            if(index == drag_end['id'])
+               end = drag_end['absolute'];
+            else
+               end = videos[index]['end'];
+
+            total_seconds += (end - start)
+         }
+
+         for(var index = drag_start['id']; index <= drag_end['id']; index++)
+         {
+            var videospan = $('<span>');
+
+            videospan.attr('data-video', index);
+
+            // Store the drag start and end timestamps on the video.
+            if(index == drag_start['id'])
+            {
+               videospan.attr('data-drag-start', drag_start['absolute']);
+               start = drag_start['absolute'];
+            }
+            else
+               start = videos[index]['start'];
+
+            if(index == drag_end['id'])
+            {
+               videospan.attr('data-drag-end', drag_end['absolute']);
+               end = drag_end['absolute'];
+            }
+            else
+               end = videos[index]['end'];
+
+            videospan.addClass('video');
+            videospan.css('width', (((end - start) / total_seconds) * 100) + "%");
+
+            // Make a pretty label for this video.
+            var seconds = end - start;
+            var hours = Math.floor(seconds / 60 / 60);
+            var minutes = Math.floor(seconds / 60);
+            seconds = Math.floor(seconds % 60);
+            length = seconds + "s"
+            if(minutes > 0)
+               length = minutes + "m " + length
+            if(hours > 0)
+               length = hours + "h " + length
+
+            videospan.text(length);
+            $("#subtimeline").append(videospan);
+
+         }
+      
+         // Draw the "zoomed in" lines between the timelines.
+         clearLines("zoom");
+
+         tbottom = $(this).position().top + $(this).height() + 15;
+         stpos = $("#subtimeline > span.video:first").position();
+         last = $("#subtimeline > span.video:last")
+         lastpos = last.position().left + last.width()
+         drawLine(drag_start['mouseX'], tbottom, stpos.left, stpos.top, "zoom");
+         drawLine(lastpos + 5, stpos.top, drag_end['mouseX'], tbottom, "zoom");
+
+         drag_start = null;
+      }
+   });
+
+
 });
+
+function clearLines(extraclass)
+{  
+   if(extraclass == undefined)
+      extraclass = "";
+   else
+      extraclass = "." + extraclass;
+
+   $(".line" + extraclass).remove();
+}
+
+function drawLine(x1, y1, x2, y2, extraclass)
+{
+   // If the line is being drawn right-to-left, swap the co-ordinate pairs so
+   // that the HTML element won't be drawn slightly lower in one direction
+   // than the other.
+   if(x2 < x1)
+   {
+      x1 = [x2, x2 = x1][0]
+      y1 = [y2, y2 = y1][0]
+   }
+
+   var line = $("<div>");
+   line.addClass("line");
+
+   if(extraclass != undefined)
+      line.addClass(extraclass);
+
+   var length = Math.sqrt(
+        (x1 - x2) * (x1 - x2) 
+      + (y1 - y2) * (y1 - y2)
+      );
+   
+   var angle = 180 / 3.1415 * Math.acos((y2 - y1) / length);
+   
+   if(x2 > x1)
+      angle *= -1;
+   
+   line
+      .css('-webkit-transform', 'rotate(' + angle + 'deg)')
+      .css('-moz-transform', 'rotate(' + angle + 'deg)')
+      .css('-o-transform', 'rotate(' + angle + 'deg)')
+      .css('-ms-transform', 'rotate(' + angle + 'deg)')
+      .css('transform', 'rotate(' + angle + 'deg)')
+      .css('height', length)
+      .css('left', x1)
+      .css('top', y1)
+      ;
+
+   $("body").append(line);
+}
 
 </script>
 <style type="text/css">
@@ -69,13 +278,14 @@ img#frame
     margin: 10px auto 10px auto;
 }
 
-div#timeline
+div.timeline
 {
     width: 90%;
     height: 20px;
-    border: 1px solid black;
-    background: #cccccc;
     margin: 10px auto 40px auto;
+    padding: 5px;
+    display: table;
+    border-spacing: 1px;
 }
 
 span#cursor
@@ -91,19 +301,69 @@ span#cursor
 span.video
 {
    display: table-cell;
-   background: #00CC00;
-   border: 1px solid blue;
+   background: #cccccc;
+   border-bottom: 2px solid #333333;
+   font-size: 10px;
+   font-family: Courier, monospace;
+   padding: 2px;
+   margin: 1px;
+   text-align: center;
+   white-space: nowrap;
+}
+
+span.video:hover
+{
+   b order-bottom: 2px dotted #333333;
+   background: #dddddd
+}
+
+div#frameholder
+{
+   border: 1px solid black;
+   padding: 10px;
+   background: #EEEEEE;
+   text-align: center;
+   vertical-align: center;
+   width: 640px;
+   height: 500px;
+   margin-left: auto;
+   margin-right: auto;
+
+}
+
+.line
+{
+   position: absolute;
+   width: 2px;
+   background-color: #82C7FF;
+   z-index: 1000;
+   -webkit-transform-origin: top left;
+   -moz-transform-origin: top left;
+   -o-transform-origin: top left;
+   -ms-transform-origin: top left;
+   transform-origin: top left;
+
+}
+
+.highlightsection
+{
+   width: 9px;
 }
 
 </style>
 </head>
 <body>
 
-<div id="timeline"></div>
+<div class="timeline" id="maintimeline"></div>
+<div class="zoomline" id="leftzoom"></div>
+<div class="zoomline" id="rightzoom"></div>
+<div class="timeline" id="subtimeline"></div>
+
 <span id="cursor"></span>
 
-<img id="frame" />
-
+<div id="frameholder">
+   <img id="frame" />
+</div>
 
 </body>
 </html>
