@@ -34,11 +34,13 @@ function getVideoInfo(obj)
    return {'id': videoid, 'display': displaytimestamp, 'absolute': absolutetimestamp, 'mouseX': event.pageX}
 }
 
+var last_videoinfo = undefined;
 
 $(document).ready(function(){
    //$(".video").mousemove(function(event){
    $(".video").live("mousemove", function(event){
       var videoinfo = getVideoInfo(this)
+      last_videoinfo = videoinfo;
 
       // Don't attempt to look up and display a frame if the mouse is
       // over a cell boundary.
@@ -268,6 +270,76 @@ function drawLine(x1, y1, x2, y2, extraclass)
    $("body").append(line);
 }
 
+
+$("span.seek").live("click", function(){
+   console.log(this);
+   
+   var side = $(this).attr("data-side");
+   var direction = $(this).attr("data-direction");
+
+   if(side == "start")
+   {
+      var video = $("div#subtimeline").children(":first-child");
+      var timestamp = video.attr("data-drag-start")
+   }
+   else
+   {
+      var video = $("div#subtimeline").children(":last-child");
+      var timestamp = video.attr("data-drag-end")
+   }
+      
+   console.log(video);
+   console.log(timestamp);
+
+   // Perform a search for the closest frame to this timestamp in the
+   // direction the user indicated.
+   $.ajax({
+          url: '/video/' + video.attr("data-video") + '/' + timestamp + "?direction=" + direction
+       ,  type: "HEAD"
+       ,  success: function(data, textstatus, jqxhr) {
+             var url = jqxhr.getResponseHeader("Location");
+             var newtimestamp = jqxhr.getResponseHeader("X-timestamp");
+             console.log(newtimestamp);
+
+             //Load a new frame from the video.
+             if($('img#frame').attr('src') != url)
+                 $('img#frame').attr('src', url);
+
+            // Adjust the boundary of the video.
+            console.log(video)
+            console.log(direction)
+
+            video.attr("data-drag-end", newtimestamp)
+
+          }
+       });
+
+});
+
+var marked_start = undefined;
+var marked_end = undefined;
+
+$("span#mark-start").live("click", function(){
+   marked_start = last_videoinfo;
+});
+
+$("span#mark-end").live("click", function(){
+   marked_end = last_videoinfo;
+   console.log(marked_end);
+});
+
+$("span#export-gif").live("click", function(){
+   console.log(marked_start);
+   console.log(marked_end);
+
+   var url = '/gif/' + marked_start['id'] + '/' + marked_start['absolute'] + "/" + marked_end['id'] + '/' + marked_end['absolute'];
+   console.log(url);
+
+   $("img").attr("src", url);
+
+});
+
+
 </script>
 <style type="text/css">
 
@@ -350,6 +422,28 @@ div#frameholder
    width: 9px;
 }
 
+div.controls
+{
+   text-align: center;
+}
+
+span.seek
+{
+   border: 1px solid #cccccc;
+   padding: 5px;
+   margin: 10px;
+   cursor: pointer;
+}
+
+span.button
+{
+   border: 1px solid #cccccc;
+   padding: 5px;
+   margin: 10px;
+   cursor: pointer;
+   background: #dddddd;
+}
+
 </style>
 </head>
 <body>
@@ -360,6 +454,16 @@ div#frameholder
 <div class="timeline" id="subtimeline"></div>
 
 <span id="cursor"></span>
+
+<div id="controls">
+   <span data-side="start" data-direction="prev" class="seek">&lt;&lt;</span> start
+   <span data-side="start" data-direction="next" class="seek">&gt;&gt;</span>
+   <span data-side="end" data-direction="prev" class="seek">&lt;&lt;</span> end
+   <span data-side="end" data-direction="next" class="seek">&gt;&gt;</span>
+   <span class="button" id="mark-start">mark start</span>
+   <span class="button" id="mark-end">mark end</span>
+   <span class="button" id="export-gif">export gif</span>
+</div>
 
 <div id="frameholder">
    <img id="frame" />
